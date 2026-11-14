@@ -981,8 +981,9 @@ def send_sms(req: SmsRequest):
     return {"sent": True}
 
 
-@app.get("/")
-def root():
+@app.get("/api", include_in_schema=False)
+@app.get("/api/", include_in_schema=False)
+def api_root():
     return {"message": "NASA POWER backend API (single-file). See /docs for interactive API UI."}
 
 
@@ -995,6 +996,43 @@ for _route in list(app.routes):
             methods=_route.methods,
             response_model=getattr(_route, "response_model", None),
         )
+
+# ---------------- Static Frontend Serving (SPA) ----------------
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+dist_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "AstroKites", "dist")
+if os.path.exists(dist_dir):
+    assets_dir = os.path.join(dist_dir, "assets")
+    if os.path.exists(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    @app.get("/", include_in_schema=False)
+    @app.get("/forecast", include_in_schema=False)
+    @app.get("/maps", include_in_schema=False)
+    @app.get("/signup", include_in_schema=False)
+    async def serve_index():
+        index_file = os.path.join(dist_dir, "index.html")
+        if os.path.exists(index_file):
+            return FileResponse(index_file)
+        return {"message": "NASA POWER backend API (single-file). Build frontend to view AstroKites UI."}
+
+    @app.get("/{path:path}", include_in_schema=False)
+    async def serve_spa_fallback(path: str):
+        if path.startswith(("api", "docs", "redoc", "openapi.json")):
+            raise HTTPException(status_code=404, detail="Not Found")
+        file_path = os.path.join(dist_dir, path)
+        if path and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        index_file = os.path.join(dist_dir, "index.html")
+        if os.path.exists(index_file):
+            return FileResponse(index_file)
+        raise HTTPException(status_code=404, detail="File not found")
+else:
+    @app.get("/")
+    def root():
+        return {"message": "NASA POWER backend API (single-file). See /docs for interactive API UI."}
+
 
 
 
